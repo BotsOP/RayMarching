@@ -11,7 +11,7 @@ public class RaymarchCamera : SceneViewFilter
 {
     [SerializeField] private Shader shader;
 
-    public Material RaymarchMaterial
+    [SerializeField] private Material RaymarchMaterial
     {
         get
         {
@@ -40,11 +40,30 @@ public class RaymarchCamera : SceneViewFilter
     }
     private Camera camera;
 
-    public float maxDistance;
-    public Color mainColor;
-    public Texture2D objectTexture;
-    public Transform directionalLight;
-    public Transform cube1;
+    [Header("Raymarcher")]
+    [SerializeField] private float maxDistance;
+    [SerializeField] private int maxIterations;
+    [SerializeField] private float accuracy;
+    
+    [Header("Directional light")]
+    [SerializeField] private Transform directionalLight;
+    [SerializeField] private Color lightColor;
+    [SerializeField] private float lightIntensity;
+
+    [Header("Shadow")] 
+    [SerializeField] private float shadowIntensity;
+    [SerializeField] private Vector2 shadowDistance;
+    [SerializeField] private float shadowPenumbra;
+
+    [Header("Ambient Occlusion")] 
+    [SerializeField] private float aoStepSize;
+    [SerializeField] private int aoIterations;
+    [SerializeField] private float aoIntesity;
+
+    [Header("Signed distance fields")]
+    [SerializeField] private Color mainColor;
+    [SerializeField] private Texture2D objectTexture;
+    [SerializeField] private Transform cube1;
 
     private Vector4[] voronoiPositions = new Vector4[50];
 
@@ -54,7 +73,6 @@ public class RaymarchCamera : SceneViewFilter
         {
             voronoiPositions[i] = new Vector4(Random.Range(0, 1f),Random.Range(0, 1f),Random.Range(0, 1f), 0);
         }
-        
     }
 
     private void OnRenderImage(RenderTexture src, RenderTexture dest)
@@ -65,15 +83,29 @@ public class RaymarchCamera : SceneViewFilter
             return;
         }
         
-        RaymarchMaterial.SetVectorArray("voronoiP", voronoiPositions);
+        RaymarchMaterial.SetFloat("maxDistance", maxDistance);
+        RaymarchMaterial.SetInt("maxIterations", maxIterations);
+        RaymarchMaterial.SetFloat("accuracy", accuracy);
+
         RaymarchMaterial.SetVector("boxPos", cube1.position);
         RaymarchMaterial.SetVector("boxSize", cube1.localScale / 2);
         RaymarchMaterial.SetColor("mainColor", mainColor);
         RaymarchMaterial.SetTexture("objectTexture", objectTexture);
-        RaymarchMaterial.SetVector("lightDir", directionalLight ? directionalLight.forward : Vector3.down);
+        
+        //RaymarchMaterial.SetVector("lightDir", directionalLight ? directionalLight.forward : Vector3.down);
+        RaymarchMaterial.SetColor("lightCol", lightColor);
+        RaymarchMaterial.SetFloat("lightIntensity", lightIntensity);
+        RaymarchMaterial.SetFloat("shadowIntensity", shadowIntensity);
+        RaymarchMaterial.SetVector("shadowDistance", shadowDistance);
+        RaymarchMaterial.SetFloat("shadowPenumbra", shadowPenumbra);
+        
+        RaymarchMaterial.SetFloat("aoStepSize", aoStepSize);
+        RaymarchMaterial.SetFloat("aoIntensity", aoIntesity);
+        RaymarchMaterial.SetInt("aoIterations", aoIterations);
+        
         RaymarchMaterial.SetMatrix("camFrustum", CamFrustum(Camera));
         RaymarchMaterial.SetMatrix("camToWorld", Camera.cameraToWorldMatrix);
-        RaymarchMaterial.SetFloat("maxDistance", maxDistance);
+        
         
         RenderTexture.active = dest;
         RaymarchMaterial.SetTexture("mainTexture", src);

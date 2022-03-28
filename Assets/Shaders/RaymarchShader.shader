@@ -24,12 +24,6 @@ Shader "BotsOP/RaymarchShader"
             sampler2D objectTexture;
             uniform sampler2D _CameraDepthTexture;
             uniform float4x4 camFrustum, camToWorld;
-            uniform float maxDistance;
-            uniform float3 lightDir;
-            uniform fixed4 mainColor;
-            uniform float3 p;
-            uniform float4 voronoiP[50];
-            float distP;
 
             uniform float3 boxPos;
             uniform float3 boxSize;
@@ -64,37 +58,11 @@ Shader "BotsOP/RaymarchShader"
                 return o;
             }
 
-            float2 N22(float2 p)
+            float ballGyroid(float3 p, float density, float thickness)
             {
-                float2 a = frac(p.xy * float3(123.34, 234.34, 345.65));
-                a += dot(a, a+34.45);
-                return frac(float2(a.x*a.y, a.y*a.x));
-            }
-
-            float voronoiGenerator(float3 p, float3 offset)
-            {
-                float d = 1;
-                float d2 = 2;
-                p -= offset;
-                for (int i = 0; i < 10; i++)
-                {
-                    if(length(p - voronoiP[i]) < d)
-                    {
-                        d2 = d;
-                        d = length(p - voronoiP[i]);
-                    }
-                }
-                if(d2 > d - 0.02 && d2 < d + 0.02 && d < 5)
-                {
-                    return -1;
-                }
-                return d - 0.1;
-            }
-
-            float ballGyroid(float3 p)
-            {
-                p *= 10;
-                return abs(0.7 * dot(sin(p), cos(p.zxy))/10) - 0.02;
+                p.z *= Rotx(_Time);
+                p *= density;
+                return abs(0.7 * dot(sin(p), cos(p.zxy))/10) - thickness;
             }
 
             float DistLine(float2 p, float2 a, float2 b)
@@ -107,57 +75,108 @@ Shader "BotsOP/RaymarchShader"
 
             float distanceField(float3 p)
             {
-                float Sphere1 = sdSphere(p, 1 );
-                float box = sdBox(p, float3(2,2,2));
-                float3 wNoiseD = WNoise((p - boxPos) * 10, _Time * 2).xyz;
-                float d = wNoiseD.x;
-                float d2 = wNoiseD.y;
-                if(abs(d - d2) < 0.2)
-                {
-                    d = -1;
-                }
-                else
-                {
-                    d = 1;
-                }
-                float sNoiseD = TNoise((p - boxPos), _Time, 1);
-                float d1 = sNoiseD;
-                //return Sphere1;
-                return box;
-                return max(Sphere1, box);
+                float sphere1 = sdSphere(p, 1 );
+                float gyroid = ballGyroid(p - boxPos, 10, 0.03);
+                float plane = p.y + 1.06;
                 
-                // float d2 = noiseD.y;
-                // d = d + d2 - 0.5;
-                // return sMin(Sphere1, d.x, -0.1);
-                //float voronoi = voronoiGenerator(p, boxPos);
-                
-                // float Sphere1 = abs(sdSphere(p - fixed3(0,0,0), 1)) - 0.03;
-                // float g = ballGyroid(p + boxPos);
-                // return smin(Sphere1, g, -0.03);
+                float ballGyroid = sMin(abs(sphere1) - 0.02, gyroid, -0.03);
+                return ballGyroid;
             }
 
             float3 getNormal(float3 p)
             {
                 const float2 offset = float2(0.001, 0.0);
-                float3 n = float3(
-                    distanceField(p + offset.xyy) - distanceField(p - offset.xyy),
-                    distanceField(p + offset.yxy) - distanceField(p - offset.yxy),
-                    distanceField(p + offset.yyx) - distanceField(p - offset.yyx)
+                float d = distanceField(p);
+                
+                float3 n = d - float3(
+                    distanceField(p - offset.xyy),
+                    distanceField(p - offset.yxy),
+                    distanceField(p - offset.yyx)
                     );
+                
                 return normalize(n);
             }
+
+            uniform float2 shadowDistance;
+            uniform float shadowIntensity, shadowPenumbra;
+
+            float softShadow(float3 ro, float3 rd, float mint, float maxt, float k, float3 n)
+            {
+                float result = 1;
+                for (float t = mint; t < maxt;)
+                {
+                    float h = distanceField(ro + rd * t);
+                    
+                    if(h < 0.01)
+                    {
+                        return 0.0;
+                    }
+                    result = min(result, k * h / t);
+                    t += h;
+                }
+                //return result;
+                return result * clamp(dot(n, rd), 0, 1);
+            }
+
+            uniform float aoStepSize, aoIntensity;
+            uniform int aoIterations;
+
+            float AmbientOcclusion(float3 p, float3 n)
+            {
+                float step = aoStepSize;
+                float ao = 0.0;
+                float dist;
+                
+                for (int i = 1; i <= aoIterations; i++)
+                {
+                    dist = step * i;
+                    ao += max(0.0, (dist - distanceField(p + n * dist)) / dist);
+                }
+
+                return (1.0 - ao * aoIntensity);
+            }
+
+            uniform float3 lightDir, lightCol;
+            uniform float lightIntensity;
+            uniform fixed4 mainColor;
+
+            float3 GetLight(float3 p)
+            {
+                float3 result;
+                
+                float3 l = -normalize(p);
+                float3 n = getNormal(p);
+
+                float3 diff = (lightCol * dot(n, l) * 0.5 + 0.5) * lightIntensity;
+                
+                float shadow = softShadow(p, l, shadowDistance.x, shadowDistance.y, shadowPenumbra, n) * 0.5 + 0.5;
+                shadow = max(0, pow(shadow, shadowIntensity));
+
+                float ao = AmbientOcclusion(p, n);
+                
+                result = diff * shadow * ao;
+                
+                if(length(p) > 1.04)
+                {
+                    return result;
+                }
+
+                return diff * ao;
+            }
+
+            uniform int maxIterations;
+            uniform float accuracy;
+            uniform float maxDistance;
 
             fixed4 raymarching(float3 rayOrigin, float3 rayDirection, float depth)
             {
                 //throw this all away
-                fixed4 result = fixed4(1,1,1,1);
-                const int maxIteration = 100;
+                fixed4 result = fixed4(1,1,1,0);
                 float t = 0;
                 float d = 0;
-                p = float3(1,1,1);
                 float3 n = float3(1,1,1);
                 
-                for (int i = 0; i < maxIteration; i++)
+                for (int i = 0; i < maxIterations; i++)
                 {
                     if(t > maxDistance || t >= depth)
                     {
@@ -166,34 +185,28 @@ Shader "BotsOP/RaymarchShader"
                         break;
                     }
 
-                    p = (rayOrigin + rayDirection * t);
+                    float3 p = (rayOrigin + rayDirection * t);
                     d = distanceField(p);
-
                     
-                    
-                    if(d < 0.01)
+                    if(d < accuracy)
                     {
-                        //shading!
-                        n = getNormal(p);
-                        float light = dot(-lightDir, n);
+                        float3 s = GetLight(p);
                         
-                        //result = fixed4(col, col, col,col);
-                        result = fixed4(p, 1);
-                        result = fixed4(light, light, light,1);
+                        result = fixed4(s, 1);
                         break;
                     }
                     t += d;
                 }
 
-                n = abs(n);
-                n = pow(n,5);
-                n = normalize(n);
+                // n = abs(n);
+                // n = pow(n,5);
+                // n = normalize(n);
+                //
+                // float4 colXY = tex2D(objectTexture, p.xy - boxPos.xy + 0.5);
+                // float4 colYZ = tex2D(objectTexture, p.yz - boxPos.yz  + 0.5);
+                // float4 colXZ = tex2D(objectTexture, p.xz - boxPos.xz  + 0.5);
+                // float4 color = colXY * n.z + colYZ * n.x + colXZ * n.y;
                 
-                float4 colXY = tex2D(objectTexture, p.xy - boxPos.xy + 0.5);
-                float4 colYZ = tex2D(objectTexture, p.yz - boxPos.yz  + 0.5);
-                float4 colXZ = tex2D(objectTexture, p.xz - boxPos.xz  + 0.5);
-                float4 color = colXY * n.z + colYZ * n.x + colXZ * n.y;
-                d = d / 100 ;
                 //return fixed4(fixed3(d,d,d), result.w);
                 //result = fixed4(color.rgb, result.w);
                 
@@ -205,6 +218,11 @@ Shader "BotsOP/RaymarchShader"
                 float depth = LinearEyeDepth(tex2D(_CameraDepthTexture, i.uv).r);
                 depth *= length(i.ray);
                 fixed3 col = tex2D(mainTexture, i.uv);
+
+                // float cd = length(i.uv - float2(0.5,0.5));
+                // float light = 0.1 / cd;
+                // col += light;
+                
                 float3 rayDirection = normalize(i.ray.xyz);
                 float3 rayOrigin = _WorldSpaceCameraPos;
                 fixed4 result = raymarching(rayOrigin, rayDirection, depth);
