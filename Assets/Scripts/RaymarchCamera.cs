@@ -11,7 +11,7 @@ public class RaymarchCamera : SceneViewFilter
 {
     [SerializeField] private Shader shader;
 
-    [SerializeField] private Material RaymarchMaterial
+    private Material RaymarchMaterial
     {
         get
         {
@@ -64,16 +64,9 @@ public class RaymarchCamera : SceneViewFilter
     [SerializeField] private Color mainColor;
     [SerializeField] private Texture2D objectTexture;
     [SerializeField] private Transform cube1;
-
-    private Vector4[] voronoiPositions = new Vector4[50];
-
-    private void OnEnable()
-    {
-        for (int i = 0; i < voronoiPositions.Length; i++)
-        {
-            voronoiPositions[i] = new Vector4(Random.Range(0, 1f),Random.Range(0, 1f),Random.Range(0, 1f), 0);
-        }
-    }
+    [SerializeField] private Transform[] planets;
+    [SerializeField] private float[] planetsSpeed;
+    [SerializeField] private float[] planetsRotationSpeed;
 
     private void OnRenderImage(RenderTexture src, RenderTexture dest)
     {
@@ -82,12 +75,21 @@ public class RaymarchCamera : SceneViewFilter
             Graphics.Blit(src, dest);
             return;
         }
+
+        Vector4[] planetsPos = new Vector4[8];
+        for (int i = 0; i < 8; i++)
+        {
+            planetsPos[i] = planets[i].position;
+        }
         
         RaymarchMaterial.SetFloat("maxDistance", maxDistance);
         RaymarchMaterial.SetInt("maxIterations", maxIterations);
         RaymarchMaterial.SetFloat("accuracy", accuracy);
-
-        RaymarchMaterial.SetVector("boxPos", cube1.position);
+        
+        RaymarchMaterial.SetVectorArray("ballPos", planetsPos);
+        RaymarchMaterial.SetFloatArray("ballSpeed", planetsSpeed);
+        RaymarchMaterial.SetFloatArray("ballRotationSpeed", planetsRotationSpeed);
+        RaymarchMaterial.SetVector("ballPos1", cube1.position);
         RaymarchMaterial.SetVector("boxSize", cube1.localScale / 2);
         RaymarchMaterial.SetColor("mainColor", mainColor);
         RaymarchMaterial.SetTexture("objectTexture", objectTexture);

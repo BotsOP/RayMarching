@@ -17,8 +17,8 @@ Shader "BotsOP/RaymarchShader"
             #pragma target 3.0
 
             #include "UnityCG.cginc"
-            #include "DistanceFunctions.cginc"
-            #include "Noise.cginc"
+            #include "Library/DistanceFunctions.cginc"
+            #include "Library/Noise.cginc"
 
             sampler2D mainTexture;
             sampler2D objectTexture;
@@ -27,6 +27,14 @@ Shader "BotsOP/RaymarchShader"
 
             uniform float3 boxPos;
             uniform float3 boxSize;
+
+            uniform float3 ballPos1;
+            uniform float ballSpeed1;
+            uniform float ballRotationSpeed1;
+
+            uniform float3 ballPos[8];
+            uniform float ballSpeed[8];
+            uniform float ballRotationSpeed[8];
 
             struct appdata
             {
@@ -64,23 +72,27 @@ Shader "BotsOP/RaymarchShader"
                 p *= density;
                 return abs(0.7 * dot(sin(p), cos(p.zxy))/10) - thickness;
             }
-
-            float DistLine(float2 p, float2 a, float2 b)
-            {
-                float2 pa = p - a;
-                float2 ba = b - a;
-                float t = clamp(dot(pa, ba)/dot(ba, ba), 0, 1);
-                return length(pa - ba * t);
-            }
+            
 
             float distanceField(float3 p)
             {
-                float sphere1 = sdSphere(p, 1 );
-                float gyroid = ballGyroid(p - boxPos, 10, 0.03);
-                float plane = p.y + 1.06;
+                float ballGyroids[8];
+                float plane = p.y + 2.12;
                 
-                float ballGyroid = sMin(abs(sphere1) - 0.02, gyroid, -0.03);
-                return ballGyroid;
+                for (int i = 0; i < 8; i++)
+                {
+                    float sphere = sdSphere(p - ballPos[i], 2);
+                
+                    p.x += _Time * ballSpeed[i];
+                    p.xz = mul(Rot(_Time * ballRotationSpeed[i]), p.xz);
+                    float gyroid = ballGyroid(p, 5, 0.03);
+                     
+                    ballGyroids[i] = sMin(abs(sphere) - 0.1, gyroid, -0.03);
+                }
+                
+                float planets = min(ballGyroids[0], min(ballGyroids[1], min(ballGyroids[2], min(ballGyroids[3], min(ballGyroids[4], min(ballGyroids[5], min(ballGyroids[6], ballGyroids[7])))))));
+                return planets;
+                return min(planets, plane);
             }
 
             float3 getNormal(float3 p)
@@ -114,7 +126,6 @@ Shader "BotsOP/RaymarchShader"
                     result = min(result, k * h / t);
                     t += h;
                 }
-                //return result;
                 return result * clamp(dot(n, rd), 0, 1);
             }
 
@@ -133,7 +144,7 @@ Shader "BotsOP/RaymarchShader"
                     ao += max(0.0, (dist - distanceField(p + n * dist)) / dist);
                 }
 
-                return (1.0 - ao * aoIntensity);
+                return 1.0 - ao * aoIntensity;
             }
 
             uniform float3 lightDir, lightCol;
@@ -155,13 +166,8 @@ Shader "BotsOP/RaymarchShader"
                 float ao = AmbientOcclusion(p, n);
                 
                 result = diff * shadow * ao;
-                
-                if(length(p) > 1.04)
-                {
-                    return result;
-                }
 
-                return diff * ao;
+                return diff;
             }
 
             uniform int maxIterations;

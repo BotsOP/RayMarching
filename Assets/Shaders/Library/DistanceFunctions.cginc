@@ -41,6 +41,13 @@ float sMin(float a, float b, float k)
 	return lerp(b, a, h) - k * h * (1.0 - h);
 }
 
+float2x2 Rot(float a)
+{
+	float s = sin(a);
+	float c = cos(a);
+	return float2x2(c, -s, s, c);
+}
+
 // Mod Position Axis
 float pMod1 (inout float p, float size)
 {
